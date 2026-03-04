@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>APK Downloads — Saturnity</title>
+  <style>
+    /* ── Config: edit REPO below ── */
+    :root {
+      --bg: #0d0d0d;
+      --surface: #161616;
+      --border: #2a2a2a;
+      --accent: #00e5ff;
+      --text: #e8e8e8;
+      --muted: #666;
+      --green: #00ff88;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    header {
+      max-width: 760px;
+      margin: 0 auto 40px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+    }
+
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    header p {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    #release-title {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 4px 12px;
+      background: #111;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    #app {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding: 20px 0;
+    }
+
+    .status.error { color: #ff4d6d; }
+
+    ul#apk-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    ul#apk-list li {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      transition: border-color 0.2s;
+    }
+
+    ul#apk-list li:hover { border-color: var(--accent); }
+
+    .file-info { flex: 1; min-width: 0; }
+
+    .file-name {
+      font-size: 0.88rem;
+      color: var(--text);
+      word-break: break-all;
+    }
+
+    .file-size {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .dl-btn {
+      display: inline-block;
+      padding: 7px 16px;
+      background: transparent;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      text-decoration: none;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.8rem;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .dl-btn:hover {
+      background: var(--accent);
+      color: #000;
+    }
+
+    footer {
+      max-width: 760px;
+      margin: 60px auto 0;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .pulse {
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>APK Downloads</h1>
+  <p>Paste this page's URL into Saturnity Auto Installer on Termux.</p>
+  <span id="release-title">Loading release info...</span>
+</header>
+
+<div id="app">
+  <p class="status pulse" id="status">⏳ Fetching latest release...</p>
+  <ul id="apk-list"></ul>
+</div>
+
+<footer>
+  Saturnity · by lanavienrose · Auto-updated from GitHub Releases
+</footer>
+
+<script>
+  // ┌─────────────────────────────────────────────────┐
+  // │  CONFIG — edit these two values                 │
+  // │  OWNER = your GitHub username                   │
+  // │  REPO  = your GitHub repository name            │
+  // └─────────────────────────────────────────────────┘
+  const OWNER = "lucivaantarez";   // ← change this
+  const REPO  = "saturnity-installer";  // ← change this
+
+  const API = `https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`;
+
+  function fmt(bytes) {
+    if (!bytes) return "";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+  }
+
+  async function load() {
+    const status   = document.getElementById("status");
+    const list     = document.getElementById("apk-list");
+    const titleEl  = document.getElementById("release-title");
+
+    try {
+      const res = await fetch(API);
+      if (!res.ok) throw new Error(`GitHub API ${res.status}: ${res.statusText}`);
+      const data = await res.json();
+
+      titleEl.textContent = `Release: ${data.tag_name} — ${new Date(data.published_at).toLocaleDateString()}`;
+
+      const apks = (data.assets || []).filter(a =>
+        a.name.toLowerCase().endsWith(".apk") || a.name.toLowerCase().endsWith(".apk.apk")
+      );
+
+      if (apks.length === 0) {
+        status.textContent = "⚠ No APK files found in the latest release.";
+        status.className = "status error";
+        return;
+      }
+
+      status.style.display = "none";
+
+      apks.forEach(asset => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <div class="file-info">
+            <div class="file-name">${asset.name}</div>
+            <div class="file-size">${fmt(asset.size)} · ${asset.download_count} downloads</div>
+          </div>
+          <a class="dl-btn" href="${asset.browser_download_url}" download>Download</a>
+        `;
+        list.appendChild(li);
+      });
+
+    } catch (err) {
+      status.textContent = `✗ Error: ${err.message}`;
+      status.className = "status error";
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>
