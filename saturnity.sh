@@ -2,7 +2,9 @@
 # curl -sL https://raw.githubusercontent.com/lucivaantarez/saturnity-installer/main/saturnity.sh -o saturnity.sh && bash saturnity.sh
 
 G='\033[0;32m'; R='\033[0;31m'; M='\033[0;35m'; D='\033[2m'; NC='\033[0m'
-TMP="${TMPDIR:-/data/data/com.termux/files/usr/tmp}/.sat"
+
+# use home dir — always writable in Termux
+TMP="$HOME/.sat_tmp.apk"
 
 cleanup() {
   rm -f "$TMP" 2>/dev/null
@@ -78,6 +80,8 @@ echo ""
 info "installing 6 apps"
 info "201MB each"
 echo ""
+info "saving to: $HOME"
+echo ""
 
 PASS=0; FAIL=0; IDX=0
 
@@ -89,22 +93,29 @@ for entry in "${APKS[@]}"; do
   echo -e " ${D}[$IDX/6] $name${NC}"
   info "downloading..."
 
-  curl -L --max-time 600 --retry 2 --retry-delay 3 \
-    --progress-bar "$url" -o "$TMP" 2>&1
+  curl -L \
+    --max-time 600 \
+    --retry 2 \
+    --retry-delay 3 \
+    --progress-bar \
+    -o "$TMP" \
+    "$url" 2>&1
 
-  if [[ ! -s "$TMP" ]]; then
-    err "$name failed"; ((FAIL++))
-    echo ""; continue
+  CURL_EXIT=$?
+
+  if [[ $CURL_EXIT -ne 0 || ! -s "$TMP" ]]; then
+    err "$name: curl error $CURL_EXIT"
+    ((FAIL++)); echo ""; continue
   fi
 
   info "installing..."
-  r=$(su -c "pm install -r $TMP" 2>&1)
+  r=$(su -c "pm install -r \"$TMP\"" 2>&1)
   rm -f "$TMP"
 
   if echo "$r" | grep -qi "success"; then
     ok "$name done"; ((PASS++))
   else
-    err "$name fail"; ((FAIL++))
+    err "$name: $r"; ((FAIL++))
   fi
   echo ""
 done
