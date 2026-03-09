@@ -3,54 +3,62 @@
 # curl -sL https://raw.githubusercontent.com/lucivaantarez/saturnity-installer/main/saturnity.sh -o saturnity.sh && bash saturnity.sh
 
 R='\033[0;31m'; G='\033[0;32m'; M='\033[0;35m'
-W='\033[1;37m'; D='\033[2m'; NC='\033[0m'
+Y='\033[1;33m'; W='\033[1;37m'; D='\033[2m'; NC='\033[0m'
 
-INSTALL_PAGE="https://lucivaantarez.github.io/saturnity-installer/"
-TMP_APK="/tmp/.sat_apk_tmp"
-TMP_HTML="/tmp/.sat_html_tmp"
+GITHUB_REPO="lucivaantarez/saturnity-installer"
+TMP_APK="/tmp/.sat_apk"
+TMP_JSON="/tmp/.sat_json"
 
 cleanup() {
-  rm -f "$TMP_APK" "$TMP_HTML" 2>/dev/null
+  rm -f "$TMP_APK" "$TMP_JSON" 2>/dev/null
   [[ -f "$0" && "$0" != /proc/* ]] && rm -f "$0" 2>/dev/null
 }
 trap cleanup EXIT
 
 COLS=$(tput cols 2>/dev/null || echo 42)
-MAX_PKG=$(( COLS - 18 ))
-[[ $MAX_PKG -lt 10 ]] && MAX_PKG=10
-SEP=$(printf '%*s' "$COLS" '' | tr ' ' '─')
+[[ $COLS -gt 50 ]] && COLS=50
+W_IN=$(( COLS - 4 ))
+
+line() { printf ' +'; printf '%*s' "$W_IN" '' | tr ' ' '-'; printf '+\n'; }
+row()  { printf ' | %-*s |\n' "$(( W_IN - 1 ))" "$1"; }
+blank(){ row ""; }
 
 trunc() {
-  local s="$1"
-  [[ ${#s} -gt $MAX_PKG ]] && echo "${s:0:$MAX_PKG}.." || echo "$s"
+  local s="$1" max="${2:-$((W_IN-4))}"
+  [[ ${#s} -gt $max ]] && echo "${s:0:$max}.." || echo "$s"
 }
 
-header() {
+draw_header() {
   clear
   echo ""
-  echo -e "${M} SATURNITY${NC} ${D}· installer${NC}"
-  echo -e "${D} ${SEP}${NC}"
-  echo ""
+  line
+  row "  SATURNITY  installer"
+  row "  @lanavienrose"
+  line
+  blank
 }
 
 # ── ROOT CHECK ───────────────────────────────────────────────
-header
+draw_header
 if ! su -c "id" > /dev/null 2>&1; then
-  echo -e " ${R}✗ no root. exiting.${NC}"
+  row "  x  no root access. exiting."
+  line
+  echo ""
   exit 1
 fi
-echo -e " ${G}✓${NC} ${D}root ok${NC}"
-echo ""
+row "  *  root ok"
 
-# ── DETECT ROBLOX CLONES ─────────────────────────────────────
-echo -e " ${D}· scanning for roblox packages...${NC}"
+# ── SCAN ROBLOX ──────────────────────────────────────────────
+row "  .  scanning packages..."
+blank
+
 PATTERNS=("com.roblox.client" "com.roblox" "roblox")
 FOUND=()
 RAW=$(su -c "pm list packages" 2>/dev/null)
 
 for pattern in "${PATTERNS[@]}"; do
-  while IFS= read -r line; do
-    pkg=$(echo "${line#package:}" | tr -d '[:space:]\r')
+  while IFS= read -r line_; do
+    pkg=$(echo "${line_#package:}" | tr -d '[:space:]\r')
     already=0
     for e in "${FOUND[@]}"; do [[ "$e" == "$pkg" ]] && already=1 && break; done
     [[ $already -eq 0 && -n "$pkg" ]] && FOUND+=("$pkg")
@@ -60,123 +68,131 @@ done
 COUNT=${#FOUND[@]}
 
 if [[ $COUNT -gt 0 ]]; then
-  echo ""
-  echo -e " ${W}found ${M}${COUNT}${W} roblox package(s):${NC}"
+  row "  found $COUNT roblox package(s):"
   for pkg in "${FOUND[@]}"; do
-    echo -e " ${M}·${NC} $(trunc "$pkg")"
+    row "    - $(trunc "$pkg" $((W_IN-6)))"
   done
+  blank
+  row "  uninstall before install? (y/n)"
+  line
   echo ""
-  echo -ne " ${W}uninstall now?${NC} ${D}(y/n)${NC} "
-  read -r UNINSTALL_ANS
+  printf '  > '; read -r UNINST_ANS
 
-  if [[ "$UNINSTALL_ANS" =~ ^[Yy]$ ]]; then
-    header
-    echo -e " ${D}· uninstalling...${NC}"
-    echo ""
-    U_SUCCESS=0; U_FAILED=0
-
+  if [[ "$UNINST_ANS" =~ ^[Yy]$ ]]; then
+    draw_header
+    row "  removing $COUNT package(s)..."
+    blank
+    US=0; UF=0
     for pkg in "${FOUND[@]}"; do
-      short=$(trunc "$pkg")
-      echo -ne " ${D}removing${NC} ${short}... "
+      short=$(trunc "$pkg" $((W_IN-12)))
+      printf ' | %-*s' "$(( W_IN - 1 ))" "  - $short"
       r=$(su -c "pm uninstall --user 0 $pkg" 2>&1)
       if echo "$r" | grep -qi "success\|deleted"; then
-        echo -e "${G}✓${NC}"; ((U_SUCCESS++))
-        continue
-      fi
-      r2=$(su -c "pm uninstall $pkg" 2>&1)
-      if echo "$r2" | grep -qi "success"; then
-        echo -e "${G}✓${NC}"; ((U_SUCCESS++))
+        printf '  ok |\n'; ((US++))
       else
-        echo -e "${R}✗${NC}"; ((U_FAILED++))
+        r2=$(su -c "pm uninstall $pkg" 2>&1)
+        if echo "$r2" | grep -qi "success"; then
+          printf '  ok |\n'; ((US++))
+        else
+          printf ' err |\n'; ((UF++))
+        fi
       fi
     done
-
-    echo ""
-    echo -e "${D} ${SEP}${NC}"
-    if [[ $U_FAILED -eq 0 ]]; then
-      echo -e " ${G}✓ all ${COUNT} removed.${NC}"
+    blank
+    if [[ $UF -eq 0 ]]; then
+      row "  done. all $COUNT removed."
     else
-      echo -e " ${M}⚠ ${U_SUCCESS} removed, ${U_FAILED} failed.${NC}"
+      row "  done. $US removed, $UF failed."
     fi
-    echo -e "${D} ${SEP}${NC}"
+    line
     echo ""
     sleep 1
   fi
+else
+  row "  no roblox packages found."
 fi
 
-# ── INSTALLER ────────────────────────────────────────────────
-header
-echo -e " ${D}· fetching installer page...${NC}"
+# ── FETCH APKs via GITHUB API ────────────────────────────────
+draw_header
+row "  fetching releases..."
+blank
 
 if ! command -v curl &>/dev/null; then
-  echo -e " ${R}✗ curl not found. run: pkg install curl${NC}"
-  exit 1
+  row "  x curl not found. run: pkg install curl"
+  line; echo ""; exit 1
 fi
 
-curl -sL "$INSTALL_PAGE" -o "$TMP_HTML" 2>/dev/null
+curl -sL "https://api.github.com/repos/${GITHUB_REPO}/releases" \
+  -H "Accept: application/vnd.github+json" \
+  -o "$TMP_JSON" 2>/dev/null
 
-if [[ ! -s "$TMP_HTML" ]]; then
-  echo -e " ${R}✗ failed to fetch installer page.${NC}"
-  exit 1
+if [[ ! -s "$TMP_JSON" ]]; then
+  row "  x failed to reach GitHub API."
+  row "    check internet connection."
+  line; echo ""; exit 1
 fi
 
-# parse APK links from the page
+# parse APK names + urls from JSON (no jq needed)
 declare -a APK_NAMES APK_URLS
-while IFS= read -r line; do
-  # match href="...apk" or href="...APK"
-  url=$(echo "$line" | grep -oP 'href="\K[^"]+(?=\.apk"|\.APK")' | head -1)
-  if [[ -n "$url" ]]; then
-    # make absolute if relative
-    if [[ "$url" != http* ]]; then
-      url="${INSTALL_PAGE%/}/${url#/}"
-    fi
+while IFS= read -r jline; do
+  if echo "$jline" | grep -q '"browser_download_url"'; then
+    url=$(echo "$jline" | grep -oP '(?<="browser_download_url": ")[^"]+')
     name=$(basename "$url")
-    APK_NAMES+=("$name")
-    APK_URLS+=("$url")
+    if echo "$name" | grep -qi '\.apk$'; then
+      APK_NAMES+=("$name")
+      APK_URLS+=("$url")
+    fi
   fi
-done < "$TMP_HTML"
+done < "$TMP_JSON"
 
 TOTAL=${#APK_NAMES[@]}
 
 if [[ $TOTAL -eq 0 ]]; then
-  echo -e " ${R}✗ no APKs found on installer page.${NC}"
-  exit 1
+  row "  x no APKs found in releases."
+  row "    make sure you have published"
+  row "    a GitHub Release with .apk assets."
+  line; echo ""; exit 1
 fi
 
-echo -e " ${G}✓${NC} ${D}found ${TOTAL} APK(s)${NC}"
-echo ""
-echo -e "${D} ${SEP}${NC}"
-
+row "  $TOTAL APK(s) available:"
+blank
 for i in "${!APK_NAMES[@]}"; do
   num=$(( i + 1 ))
-  echo -e " ${M}[${num}]${NC} ${APK_NAMES[$i]}"
+  row "  [$num] $(trunc "${APK_NAMES[$i]}" $((W_IN-6)))"
 done
-
-echo -e "${D} ${SEP}${NC}"
+blank
+row "  install which? (1-$TOTAL or all)"
+line
 echo ""
-echo -ne " ${W}install which?${NC} ${D}(1-${TOTAL} or 'all')${NC} "
-read -r CHOICE
+printf '  > '; read -r CHOICE
 
 install_apk() {
   local name="$1" url="$2"
+  draw_header
+  row "  downloading..."
+  row "    $(trunc "$name" $((W_IN-4)))"
+  line
   echo ""
-  echo -e " ${D}· downloading ${name}...${NC}"
-  curl -L "$url" -o "$TMP_APK" --progress-bar
+  curl -L "$url" -o "$TMP_APK" --progress-bar 2>&1
+  echo ""
   if [[ ! -s "$TMP_APK" ]]; then
-    echo -e " ${R}✗ download failed.${NC}"
-    return 1
+    draw_header
+    row "  x download failed."
+    line; echo ""; return 1
   fi
-  echo -e " ${D}· installing...${NC}"
+  draw_header
+  row "  installing $name..."
+  blank
   r=$(su -c "pm install -r $TMP_APK" 2>&1)
   rm -f "$TMP_APK"
   if echo "$r" | grep -qi "success"; then
-    echo -e " ${G}✓ installed: ${name}${NC}"
+    row "  ok  installed successfully."
   else
-    echo -e " ${R}✗ install failed: ${r}${NC}"
+    row "  x  install failed."
+    row "     $r"
   fi
+  line; echo ""
 }
-
-header
 
 if [[ "$CHOICE" == "all" ]]; then
   for i in "${!APK_NAMES[@]}"; do
@@ -186,30 +202,34 @@ elif [[ "$CHOICE" =~ ^[0-9]+$ ]] && (( CHOICE >= 1 && CHOICE <= TOTAL )); then
   idx=$(( CHOICE - 1 ))
   install_apk "${APK_NAMES[$idx]}" "${APK_URLS[$idx]}"
 else
-  echo -e " ${Y}cancelled.${NC}"
+  draw_header
+  row "  cancelled."
+  line; echo ""
 fi
 
 # ── DONE ─────────────────────────────────────────────────────
+draw_header
+row "  all done."
+blank
+row "  open script in editor? (y/n)"
+line
 echo ""
-echo -e "${D} ${SEP}${NC}"
-echo -e " ${G}✓ done.${NC}"
-echo -e "${D} ${SEP}${NC}"
-echo ""
-echo -ne " ${W}open editor?${NC} ${D}(y/n)${NC} "
-read -r EDIT_ANS
+printf '  > '; read -r EDIT_ANS
 
 if [[ "$EDIT_ANS" =~ ^[Yy]$ ]]; then
   clear
   if command -v nano &>/dev/null; then
-    nano "$0" 2>/dev/null || echo -e " ${R}✗ file already deleted.${NC}"
+    nano "$0" 2>/dev/null || { echo "  file already deleted."; }
   elif command -v vi &>/dev/null; then
-    vi "$0" 2>/dev/null || echo -e " ${R}✗ file already deleted.${NC}"
+    vi "$0" 2>/dev/null || { echo "  file already deleted."; }
   else
-    echo -e " ${R}✗ no editor found. run: pkg install nano${NC}"
+    echo "  no editor found. run: pkg install nano"
   fi
-else
-  clear
 fi
 
-echo -e " ${D}✦ saturnity · @lanavienrose${NC}"
+clear
+echo ""
+line
+row "  saturnity  @lanavienrose"
+line
 echo ""
