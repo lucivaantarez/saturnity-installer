@@ -1,0 +1,6 @@
+W1|https://github.com/lucivaantarez/saturnity-installer/releases/download/v1/W1.apk
+W2|https://github.com/lucivaantarez/saturnity-installer/releases/download/v1/W2.apk
+W3|https://github.com/lucivaantarez/saturnity-installer/releases/download/v1/W3.apk
+W4|https://github.com/lucivaantarez/saturnity-installer/releases/download/v1/W4.apk
+W5|https://github.com/lucivaantarez/saturnity-installer/releases/download/v1/W5.apk
+W6|https://github.com/lucivaantarez/saturnity-installer/releases/download/v1/W6.apk
