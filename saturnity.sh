@@ -2,7 +2,7 @@
 # curl -sL https://raw.githubusercontent.com/lucivaantarez/saturnity-installer/main/saturnity.sh -o saturnity.sh && bash saturnity.sh
 
 G='\033[0;32m'; R='\033[0;31m'; M='\033[0;35m'; D='\033[2m'; NC='\033[0m'
-TMP="/tmp/.sat"
+TMP="${TMPDIR:-/data/data/com.termux/files/usr/tmp}/.sat"
 
 cleanup() {
   rm -f "$TMP" 2>/dev/null
@@ -19,23 +19,22 @@ APKS=(
   "W6|https://github.com/lucivaantarez/saturnity-installer/releases/download/v1/W6.apk"
 )
 
-say()  { echo -e "$1"; }
-ok()   { say " ${G}+ $1${NC}"; }
-err()  { say " ${R}x $1${NC}"; }
-info() { say " ${D}$1${NC}"; }
-line() { say "${D} --------${NC}"; }
+ok()   { echo -e " ${G}+ $1${NC}"; }
+err()  { echo -e " ${R}x $1${NC}"; }
+info() { echo -e " ${D}$1${NC}"; }
+line() { echo -e "${D} --------${NC}"; }
 
 # ROOT
 clear
-say ""
-say "${M} SATURNITY${NC}"
+echo ""
+echo -e "${M} SATURNITY${NC}"
 line
-say ""
+echo ""
 if ! su -c "id" >/dev/null 2>&1; then
-  err "no root"; say ""; exit 1
+  err "no root"; echo ""; exit 1
 fi
 ok "root"
-say ""
+echo ""
 
 # UNINSTALL
 info "scanning..."
@@ -54,15 +53,14 @@ COUNT=${#FOUND[@]}
 if [[ $COUNT -gt 0 ]]; then
   info "removing $COUNT app(s)"
   for pkg in "${FOUND[@]}"; do
-    # only show short name
     short="${pkg##*.}"
-    echo -ne " ${D}$short...${NC} "
+    echo -ne " ${D}$short... ${NC}"
     r=$(su -c "pm uninstall --user 0 $pkg" 2>&1)
     if echo "$r" | grep -qi "success\|deleted"; then
-      say "${G}ok${NC}"
+      echo -e "${G}ok${NC}"
     else
       r2=$(su -c "pm uninstall $pkg" 2>&1)
-      echo "$r2" | grep -qi "success" && say "${G}ok${NC}" || say "${R}fail${NC}"
+      echo "$r2" | grep -qi "success" && echo -e "${G}ok${NC}" || echo -e "${R}fail${NC}"
     fi
   done
   ok "uninstalled"
@@ -73,23 +71,22 @@ fi
 sleep 1; clear
 
 # INSTALL
-say ""
-say "${M} SATURNITY${NC}"
+echo ""
+echo -e "${M} SATURNITY${NC}"
 line
-say ""
+echo ""
 info "installing 6 apps"
-info "201MB each, please wait"
-say ""
+info "201MB each"
+echo ""
 
-PASS=0; FAIL=0
-IDX=0
+PASS=0; FAIL=0; IDX=0
 
 for entry in "${APKS[@]}"; do
   name="${entry%%|*}"
   url="${entry##*|}"
   IDX=$(( IDX + 1 ))
 
-  say " ${D}[$IDX/6] $name${NC}"
+  echo -e " ${D}[$IDX/6] $name${NC}"
   info "downloading..."
 
   curl -L --max-time 600 --retry 2 --retry-delay 3 \
@@ -97,7 +94,7 @@ for entry in "${APKS[@]}"; do
 
   if [[ ! -s "$TMP" ]]; then
     err "$name failed"; ((FAIL++))
-    say ""; continue
+    echo ""; continue
   fi
 
   info "installing..."
@@ -109,7 +106,7 @@ for entry in "${APKS[@]}"; do
   else
     err "$name fail"; ((FAIL++))
   fi
-  say ""
+  echo ""
 done
 
 # DONE
@@ -117,5 +114,5 @@ line
 ok "$PASS installed"
 [[ $FAIL -gt 0 ]] && err "$FAIL failed"
 line
-say " ${D}@lanavienrose${NC}"
-say ""
+echo -e " ${D}@lanavienrose${NC}"
+echo ""
