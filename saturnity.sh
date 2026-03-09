@@ -3,43 +3,28 @@
 
 G='\033[0;32m'; R='\033[0;31m'; M='\033[0;35m'; D='\033[2m'; NC='\033[0m'
 
-# use home dir — always writable in Termux
-TMP="$HOME/.sat_tmp.apk"
-
-cleanup() {
-  rm -f "$TMP" 2>/dev/null
-  [[ -f "$0" && "$0" != /proc/* ]] && rm -f "$0" 2>/dev/null
-}
+cleanup() { [[ -f "$0" && "$0" != /proc/* ]] && rm -f "$0" 2>/dev/null; }
 trap cleanup EXIT
 
-APKS=(
-  "W1|https://github.com/lucivaantarez/saturnity-installer/releases/download/v1/W1.apk"
-  "W2|https://github.com/lucivaantarez/saturnity-installer/releases/download/v1/W2.apk"
-  "W3|https://github.com/lucivaantarez/saturnity-installer/releases/download/v1/W3.apk"
-  "W4|https://github.com/lucivaantarez/saturnity-installer/releases/download/v1/W4.apk"
-  "W5|https://github.com/lucivaantarez/saturnity-installer/releases/download/v1/W5.apk"
-  "W6|https://github.com/lucivaantarez/saturnity-installer/releases/download/v1/W6.apk"
-)
+bar() {
+  local pct=$1 w=20
+  local f=$(( pct * w / 100 )) e=$(( w - f ))
+  printf "\r ${M}[$(printf '%*s' $f | tr ' ' '#')$(printf '%*s' $e | tr ' ' '.')${M}]${NC} ${D}%d%%${NC}" "$pct"
+}
 
-ok()   { echo -e " ${G}+ $1${NC}"; }
-err()  { echo -e " ${R}x $1${NC}"; }
-info() { echo -e " ${D}$1${NC}"; }
-line() { echo -e "${D} --------${NC}"; }
-
-# ROOT
 clear
 echo ""
 echo -e "${M} SATURNITY${NC}"
-line
-echo ""
-if ! su -c "id" >/dev/null 2>&1; then
-  err "no root"; echo ""; exit 1
-fi
-ok "root"
+echo -e "${D} --------${NC}"
 echo ""
 
-# UNINSTALL
-info "scanning..."
+if ! su -c "id" >/dev/null 2>&1; then
+  echo -e " ${R}x no root${NC}"; echo ""; exit 1
+fi
+
+bar 10; sleep 0.3
+
+# scan
 FOUND=()
 RAW=$(su -c "pm list packages" 2>/dev/null)
 for pt in "com.roblox.client" "com.roblox" "roblox"; do
@@ -51,79 +36,37 @@ for pt in "com.roblox.client" "com.roblox" "roblox"; do
   done < <(echo "$RAW" | grep -i "$pt")
 done
 
+bar 40; sleep 0.3
 COUNT=${#FOUND[@]}
-if [[ $COUNT -gt 0 ]]; then
-  info "removing $COUNT app(s)"
-  for pkg in "${FOUND[@]}"; do
-    short="${pkg##*.}"
-    echo -ne " ${D}$short... ${NC}"
-    r=$(su -c "pm uninstall --user 0 $pkg" 2>&1)
-    if echo "$r" | grep -qi "success\|deleted"; then
-      echo -e "${G}ok${NC}"
-    else
-      r2=$(su -c "pm uninstall $pkg" 2>&1)
-      echo "$r2" | grep -qi "success" && echo -e "${G}ok${NC}" || echo -e "${R}fail${NC}"
-    fi
-  done
-  ok "uninstalled"
-else
-  info "none found"
+
+if [[ $COUNT -eq 0 ]]; then
+  bar 100; echo ""
+  echo ""
+  echo -e " ${D}nothing found${NC}"
+  echo ""; exit 0
 fi
 
-sleep 1; clear
-
-# INSTALL
-echo ""
-echo -e "${M} SATURNITY${NC}"
-line
-echo ""
-info "installing 6 apps"
-info "201MB each"
-echo ""
-info "saving to: $HOME"
-echo ""
-
-PASS=0; FAIL=0; IDX=0
-
-for entry in "${APKS[@]}"; do
-  name="${entry%%|*}"
-  url="${entry##*|}"
-  IDX=$(( IDX + 1 ))
-
-  echo -e " ${D}[$IDX/6] $name${NC}"
-  info "downloading..."
-
-  curl -L \
-    --max-time 600 \
-    --retry 2 \
-    --retry-delay 3 \
-    --progress-bar \
-    -o "$TMP" \
-    "$url" 2>&1
-
-  CURL_EXIT=$?
-
-  if [[ $CURL_EXIT -ne 0 || ! -s "$TMP" ]]; then
-    err "$name: curl error $CURL_EXIT"
-    ((FAIL++)); echo ""; continue
-  fi
-
-  info "installing..."
-  r=$(su -c "pm install -r \"$TMP\"" 2>&1)
-  rm -f "$TMP"
-
-  if echo "$r" | grep -qi "success"; then
-    ok "$name done"; ((PASS++))
+# uninstall
+PASS=0; FAIL=0
+for i in "${!FOUND[@]}"; do
+  pkg="${FOUND[$i]}"
+  pct=$(( 40 + (i + 1) * 50 / COUNT ))
+  bar $pct
+  r=$(su -c "pm uninstall --user 0 $pkg" 2>&1)
+  if echo "$r" | grep -qi "success\|deleted"; then
+    ((PASS++))
   else
-    err "$name: $r"; ((FAIL++))
+    r2=$(su -c "pm uninstall $pkg" 2>&1)
+    echo "$r2" | grep -qi "success" && ((PASS++)) || ((FAIL++))
   fi
-  echo ""
 done
 
-# DONE
-line
-ok "$PASS installed"
-[[ $FAIL -gt 0 ]] && err "$FAIL failed"
-line
+bar 100; echo ""
+echo ""
+echo -e "${D} --------${NC}"
+[[ $FAIL -eq 0 ]] \
+  && echo -e " ${G}+ $PASS removed${NC}" \
+  || echo -e " ${G}+ $PASS removed${NC}  ${R}x $FAIL failed${NC}"
+echo -e "${D} --------${NC}"
 echo -e " ${D}@lanavienrose${NC}"
 echo ""
